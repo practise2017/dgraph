@@ -395,7 +395,7 @@ func (l *List) addMutation(ctx context.Context, t *protos.DirectedEdge) (bool, e
 	if hasMutated {
 		var gid uint32
 		if rv, ok := ctx.Value("raft").(x.RaftValue); ok {
-			l.water.Ch <- x.Mark{Index: rv.Index}
+			l.water.Process(x.Mark{Index: rv.Index})
 			l.pending = append(l.pending, rv.Index)
 			gid = rv.Group
 		}
@@ -419,7 +419,7 @@ func (l *List) delete(ctx context.Context, attr string) error {
 
 	var gid uint32
 	if rv, ok := ctx.Value("raft").(x.RaftValue); ok {
-		l.water.Ch <- x.Mark{Index: rv.Index}
+		l.water.Process(x.Mark{Index: rv.Index})
 		l.pending = append(l.pending, rv.Index)
 		gid = rv.Group
 	}
@@ -542,7 +542,7 @@ func (l *List) SyncIfDirty(ctx context.Context) (committed bool, err error) {
 	// deleteAll is used to differentiate when we don't have any updates, v/s
 	// when we have explicitly deleted everything.
 	if len(l.mlayer) == 0 && atomic.LoadInt32(&l.deleteAll) == 0 {
-		l.water.Ch <- x.Mark{Indices: l.pending, Done: true}
+		l.water.Process(x.Mark{Indices: l.pending, Done: true})
 		l.pending = make([]uint64, 0, 3)
 		return false, nil
 	}

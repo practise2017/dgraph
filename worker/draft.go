@@ -470,8 +470,8 @@ func (n *node) processMembership(e raftpb.Entry, mm *protos.Membership) error {
 
 func (n *node) process(e raftpb.Entry, pending chan struct{}) {
 	defer func() {
-		n.applied.Ch <- x.Mark{Index: e.Index, Done: true}
-		posting.SyncMarkFor(n.gid).Ch <- x.Mark{Index: e.Index, Done: true}
+		n.applied.Process(x.Mark{Index: e.Index, Done: true})
+		posting.SyncMarkFor(n.gid).Process(x.Mark{Index: e.Index, Done: true})
 	}()
 
 	if e.Type != raftpb.EntryNormal {
@@ -502,8 +502,8 @@ func (n *node) processApplyCh() {
 		mark := x.Mark{Index: e.Index, Done: true}
 
 		if len(e.Data) == 0 {
-			n.applied.Ch <- mark
-			posting.SyncMarkFor(n.gid).Ch <- mark
+			n.applied.Process(mark)
+			posting.SyncMarkFor(n.gid).Process(mark)
 			continue
 		}
 
@@ -519,8 +519,8 @@ func (n *node) processApplyCh() {
 
 			cs := n.Raft().ApplyConfChange(cc)
 			n.SetConfState(cs)
-			n.applied.Ch <- mark
-			posting.SyncMarkFor(n.gid).Ch <- mark
+			n.applied.Process(mark)
+			posting.SyncMarkFor(n.gid).Process(mark)
 			continue
 		}
 
@@ -538,8 +538,8 @@ func (n *node) processApplyCh() {
 				// should use new schema
 				n.waitForAppliedMark(n.ctx, e.Index-1)
 				if err := n.processSchemaMutations(e, proposal.Mutations); err != nil {
-					n.applied.Ch <- mark
-					posting.SyncMarkFor(n.gid).Ch <- mark
+					n.applied.Process(mark)
+					posting.SyncMarkFor(n.gid).Process(mark)
 					n.props.Done(proposal.Id, err)
 					continue
 				}
@@ -675,8 +675,8 @@ func (n *node) Run() {
 				// Mark{3, false} is emitted. So it's safer to emit watermarks as soon as
 				// possible sequentially
 				status := x.Mark{Index: entry.Index, Done: false}
-				n.applied.Ch <- status
-				posting.SyncMarkFor(n.gid).Ch <- status
+				n.applied.Process(status)
+				posting.SyncMarkFor(n.gid).Process(status)
 
 				// Just queue up to be processed. Don't wait on them.
 				n.applyCh <- entry

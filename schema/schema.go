@@ -100,7 +100,7 @@ func (s *stateGroup) update(se SyncEntry) {
 	defer s.Unlock()
 
 	s.predicate[se.Attr] = &se.Schema
-	se.Water.Ch <- x.Mark{Index: se.Index, Done: false}
+	se.Water.Process(x.Mark{Index: se.Index, Done: false})
 	syncCh <- se
 	s.elog.Printf("Setting schema type for attr %s: %v, tokenizer: %v, directive: %v\n", se.Attr,
 		types.TypeID(se.Schema.ValueType).Name(), se.Schema.Tokenizer, se.Schema.Directive)
@@ -293,10 +293,10 @@ type SyncEntry struct {
 	Index  uint64
 }
 
-func addToEntriesMap(entriesMap map[chan x.Mark][]uint64, entries []SyncEntry) {
+func addToEntriesMap(entriesMap map[*x.WaterMark][]uint64, entries []SyncEntry) {
 	for _, entry := range entries {
 		if entry.Water != nil {
-			entriesMap[entry.Water.Ch] = append(entriesMap[entry.Water.Ch], entry.Index)
+			entriesMap[entry.Water] = append(entriesMap[entry.Water], entry.Index)
 		}
 	}
 }
@@ -324,10 +324,10 @@ func batchSync() {
 				pstore.BatchSet(wb)
 				wb = wb[:0]
 
-				entriesMap := make(map[chan x.Mark][]uint64)
+				entriesMap := make(map[*x.WaterMark][]uint64)
 				addToEntriesMap(entriesMap, entries)
-				for ch, indices := range entriesMap {
-					ch <- x.Mark{Indices: indices, Done: true}
+				for w, indices := range entriesMap {
+					w.Process(x.Mark{Indices: indices, Done: true})
 				}
 				entries = entries[:0]
 			}
