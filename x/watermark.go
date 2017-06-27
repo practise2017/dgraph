@@ -20,6 +20,7 @@ package x
 import (
 	"container/heap"
 	"sync/atomic"
+	"time"
 
 	"golang.org/x/net/trace"
 )
@@ -101,29 +102,9 @@ func (w *WaterMark) process() {
 
 	heap.Init(&indices)
 	var loop uint64
+    ticker := time.NewTicker(time.Second)
 
-	processOne := func(index uint64, done bool) {
-		// If not already done, then set. Otherwise, don't undo a done entry.
-		prev, present := pending[index]
-		if !present {
-			heap.Push(&indices, index)
-			// indices now nonempty, update waitingFor.
-			atomic.StoreUint32(&w.waitingFor, 1)
-		}
-
-		delta := 1
-		if done {
-			delta = -1
-		}
-		pending[index] = prev + delta
-
-		loop++
-		if len(indices) > 0 && loop%10000 == 0 {
-			min := indices[0]
-			w.elog.Printf("WaterMark %s: Done entry %4d. Size: %4d Watermark: %-4d Looking for: %-4d. Value: %d\n",
-				w.Name, index, len(indices), w.DoneUntil(), min, pending[min])
-		}
-
+	clearHeap := func(index uint64) {
 		// Update mark by going through all indices in order; and checking if they have
 		// been done. Stop at the first index, which isn't done.
 		doneUntil := w.DoneUntil()
@@ -153,6 +134,36 @@ func (w *WaterMark) process() {
 			AssertTrue(atomic.CompareAndSwapUint64(&w.doneUntil, doneUntil, until))
 			w.elog.Printf("%s: Done until %d. Loops: %d\n", w.Name, until, loops)
 		}
+	}
+
+	processOne := func(index uint64, done bool) {
+		// If not already done, then set. Otherwise, don't undo a done entry.
+		prev, present := pending[index]
+		if !present {
+			heap.Push(&indices, index)
+			// indices now nonempty, update waitingFor.
+			atomic.StoreUint32(&w.waitingFor, 1)
+		}
+
+		delta := 1
+		if done {
+			delta = -1
+		}
+		pending[index] = prev + delta
+
+		loop++
+		if len(indices) > 0 && loop%10000 == 0 {
+			min := indices[0]
+			w.elog.Printf("WaterMark %s: Done entry %4d. Size: %4d Watermark: %-4d Looking for: %-4d. Value: %d\n",
+				w.Name, index, len(indices), w.DoneUntil(), min, pending[min])
+		}
+
+		select {
+			case <- ticker.C:
+				clearHeap(index)
+			default:
+		}
+		
 	}
 
 	for mark := range w.Ch {
