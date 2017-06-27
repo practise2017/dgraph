@@ -17,6 +17,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -38,8 +39,10 @@ var (
 	dgraph     = flag.String("d", "127.0.0.1:8080", "Dgraph server address")
 	concurrent = flag.Int("c", 100, "Number of concurrent requests to make to Dgraph")
 	numRdf     = flag.Int("m", 1000, "Number of RDF N-Quads to send as part of a mutation.")
+	clientDir  = flag.String("cd", "c", "Directory to store xid to uid mapping")
 	storeXid   = flag.Bool("x", false, "Store xids by adding corresponding _xid_ edges")
 	mode       = flag.String("profile.mode", "", "enable profiling mode, one of [cpu, mem, mutex, block]")
+	blockRate  = flag.Int("block", 0, "Block profiling rate")
 	// TLS configuration
 	tlsEnabled       = flag.Bool("tls.on", false, "Use TLS connections.")
 	tlsInsecure      = flag.Bool("tls.insecure", false, "Skip certificate validation (insecure)")
@@ -199,6 +202,7 @@ func setupConnection() (*grpc.ClientConn, error) {
 
 func main() {
 	x.Init()
+	runtime.SetBlockProfileRate(*blockRate)
 	go http.ListenAndServe("localhost:6060", nil)
 	switch *mode {
 	case "cpu":
@@ -222,7 +226,7 @@ func main() {
 		Pending:       *concurrent,
 		PrintCounters: true,
 	}
-	dgraphClient := client.NewDgraphClient(conn, bmOpts)
+	dgraphClient := client.NewDgraphClient(conn, bmOpts, *clientDir)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
